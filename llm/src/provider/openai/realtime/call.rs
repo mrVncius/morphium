@@ -1,0 +1,162 @@
+//! SIP call control wire types.
+//!
+//! Covers the `/realtime/calls` REST surface: accepting an incoming SIP call,
+//! creating a call over WebRTC, transferring, rejecting, and hanging up.
+//!
+//! See: <https://developers.openai.com/api/reference/resources/realtime/subresources/calls>
+
+use derive_more::{Deref, Display, Into};
+use serde::{Deserialize, Serialize};
+
+use super::prompt::ResponsePrompt;
+use super::response::ResponseMaxOutputTokens;
+use super::session::{
+    Modality, RealtimeAudioConfig, RealtimeReasoning, RealtimeSessionCreateRequest,
+    RealtimeToolsConfig, RealtimeTracingConfig, RealtimeTruncation, SessionInclude,
+};
+use super::tool::RealtimeToolChoiceConfig;
+
+/// Body of the accept-call request (`POST /realtime/calls/{call_id}/accept`).
+///
+/// Accept an incoming SIP call and configure the realtime session that will
+/// handle it.
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
+#[display("{self:?}")]
+pub struct AcceptCallRequest {
+    /// The type of session to create. Always `realtime` for the Realtime API.
+    #[serde(rename = "type")]
+    pub type_: String,
+
+    /// Configuration for input and output audio.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<RealtimeAudioConfig>,
+
+    /// Additional fields to include in server outputs.
+    ///
+    /// `item.input_audio_transcription.logprobs`: Include logprobs for input
+    /// audio transcription.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include: Option<Vec<SessionInclude>>,
+
+    /// The default system instructions (i.e. system message) prepended to model
+    /// calls. This field allows the client to guide the model on desired
+    /// responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+
+    /// Maximum number of output tokens for a single assistant response,
+    /// inclusive of tool calls. Provide an integer between 1 and 4096 to limit
+    /// output tokens, or `inf` for the maximum available tokens for a given
+    /// model. Defaults to `inf`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<ResponseMaxOutputTokens>,
+
+    /// The Realtime model used for this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+
+    /// The set of modalities the model can respond with. It defaults to
+    /// `["audio"]`, indicating that the model will respond with audio plus a
+    /// transcript. `["text"]` can be used to make the model respond with text
+    /// only. It is not possible to request both `text` and `audio` at the same
+    /// time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_modalities: Option<Vec<Modality>>,
+
+    /// Whether the model may call multiple tools in parallel. Only supported by
+    /// reasoning Realtime models such as `gpt-realtime-2`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+
+    /// Reference to a prompt template and its variables.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<ResponsePrompt>,
+
+    /// Configuration for reasoning-capable Realtime models such as
+    /// `gpt-realtime-2`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<RealtimeReasoning>,
+
+    /// How the model chooses tools. Provide one of the string modes or force a
+    /// specific function/MCP tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<RealtimeToolChoiceConfig>,
+
+    /// Tools available to the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<RealtimeToolsConfig>,
+
+    /// Realtime API can write session traces to the Traces Dashboard. Set to
+    /// null to disable tracing. Once tracing is enabled for a session, the
+    /// configuration cannot be modified.
+    ///
+    /// `auto` will create a trace for the session with default values for the
+    /// workflow name, group id, and metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracing: Option<RealtimeTracingConfig>,
+
+    /// When the number of tokens in a conversation exceeds the model's input
+    /// token limit, the conversation be truncated, meaning messages (starting
+    /// from the oldest) will not be included in the model's context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncation: Option<RealtimeTruncation>,
+}
+
+/// Body of the create-call request (`POST /realtime/calls`).
+///
+/// Create a new Realtime API call over WebRTC; the endpoint answers with the
+/// SDP needed to complete the peer connection.
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
+#[display("{self:?}")]
+pub struct CreateCallRequest {
+    /// WebRTC Session Description Protocol (SDP) offer generated by the caller.
+    pub sdp: String,
+
+    /// Realtime session object configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<RealtimeSessionCreateRequest>,
+}
+
+/// Body of the refer-call request (`POST /realtime/calls/{call_id}/refer`).
+///
+/// Transfer an active SIP call to a new destination using the SIP REFER verb.
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
+#[display("{self:?}")]
+pub struct ReferCallRequest {
+    /// URI that should appear in the SIP Refer-To header. Supports values like
+    /// `tel:+14155550123` or `sip:agent@example.com`.
+    pub target_uri: String,
+}
+
+/// Body of the reject-call request (`POST /realtime/calls/{call_id}/reject`).
+///
+/// Decline an incoming SIP call by returning a SIP status code to the caller.
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
+#[display("{self:?}")]
+pub struct RejectCallRequest {
+    /// SIP response code to send back to the caller. Defaults to `603`
+    /// (Decline) when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_code: Option<u64>,
+}
+
+/// Response of the accept-call endpoint (`POST /realtime/calls/{call_id}/accept`).
+///
+/// Accepting an incoming SIP call has no response body: the call is configured
+/// server-side and the resulting session is announced over the Realtime
+/// WebSocket as a `session.created` event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Display)]
+#[display("{self:?}")]
+pub struct AcceptCallResponse {}
+
+/// Response of the create-call endpoint (`POST /realtime/calls`).
+///
+/// The endpoint answers with `application/sdp` rather than JSON, so this
+/// newtype carries the raw SDP answer verbatim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display, Into, Deref)]
+#[serde(transparent)]
+#[display("{_0}")]
+pub struct CreateCallResponse(
+    /// The SDP answer to the caller's offer.
+    pub String,
+);

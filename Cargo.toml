@@ -1,0 +1,45 @@
+# `morphium` is the kernel: turn execution and its model/tool/journal/policy
+# contracts. `llm` and `mcp` own adapters and implement the kernel's
+# seams without a reverse dependency from the kernel.
+[package]
+name = "morphium"
+version = "0.1.0"
+edition = "2024"
+description = "The kernel of the Morphium agent runtime."
+
+[dependencies]
+futures = "0.3"
+serde = { workspace = true }
+serde_json = "1.0.150"
+thiserror = "2"
+
+[dev-dependencies]
+parking_lot = "0.12"
+
+[workspace]
+resolver = "3"
+members = ["llm", "mcp"]
+default-members = [".", "llm"]
+
+[workspace.dependencies]
+morphium = { path = "." }
+llm = { path = "llm" }
+
+# third-party pins
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.150"
+tokio = { version = "1", features = ["rt", "macros", "net", "time"] }
+uuid = { version = "1", features = ["v7"] }
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "warn"
+
+[lints]
+workspace = true

@@ -1,0 +1,44 @@
+[package]
+name = "mcp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+http = "1"
+morphium = { workspace = true }
+rmcp = { version = "3.4", default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+] }
+serde_json = { workspace = true }
+thiserror = "2"
+tokio = { version = "1", features = ["process", "sync", "time"] }
+
+[dev-dependencies]
+# The `mcp` crate speaks the client half; the live round-trip test serves the
+# other half over real pipes, so it needs the server side of the same SDK.
+# `default-features = false` must be repeated here: leaving it off would let
+# the dev-dependency's defaults leak into the test graph's feature union.
+rmcp = { version = "3.4", default-features = false, features = [
+    "server",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "time"] }
+# Serves the rmcp streamable-HTTP service on a loopback listener for the live
+# HTTP target. `default-features = false` keeps the test graph to what the test
+# actually uses (`axum::serve` over HTTP/1.1).
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+
+# A live stdio round trip needs one binary in two roles, so this target owns
+# its `main` instead of libtest's. Spawned with no arguments it is the client;
+# spawned by itself with an argv marker it serves MCP on stdin/stdout. See the
+# file header for why the role cannot ride an environment variable.
+[[test]]
+name = "live_stdio"
+path = "tests/live_stdio.rs"
+harness = false
+
+[lints]
+workspace = true
